@@ -1,0 +1,3 @@
+# fichier qui regroupe les terminaisons de fins de ligne selon type de fichier
+*.sh text eol=lf
+*.sql text eol=lf
