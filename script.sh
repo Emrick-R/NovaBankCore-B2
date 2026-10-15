@@ -87,3 +87,31 @@ ufw --force enable
 log "Activation de l'ufw terminée" "s"
 
 log "Configuration de l'ufw terminée" "s"
+
+# Configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi
+log "Configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi"
+
+log "Copie du fichier original"
+# On créer un copie du fichier original avec verification que cela n'est pas déjà fait (--update=none) et
+# avec ses droits initiaux (-p)
+cp -p --update=none /etc/postgresql/18/main/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf.orig
+log "Copie du fichier original terminé" "s"
+
+# Création du fichier de config
+log "Création du fichier de configuration"
+cat > /etc/postgresql/18/main/pg_hba.conf << 'EOF'
+  # Fichier de configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi. Générer via script.sh
+  local	all	postgres		peer
+  host	bankdb	bank_owner,+grp_appli	127.0.0.1/32	scram-sha-256
+  host	bankdb	+grp_analyste,+grp_support,+grp_auditeur	192.168.56.0/24	scram-sha-256
+	local	all	all 	reject
+	host	all	all	all	reject
+EOF
+log "Création du fichier de configuration terminé" "s"
+
+# Rechargement du service postgresql
+log "Rechargement du service postgresql"
+systemctl reload postgresql
+log "Rechargement du service postgresql terminé" "s"
+
+log "Configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi terminée" "s"
