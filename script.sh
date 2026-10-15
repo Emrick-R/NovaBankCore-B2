@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fichier d'installation de postgresql
+# fichier d'installation et de configuration de postgresql, de ufw
 # Usage : sudo ./script.sh
 set -euo pipefail
 
@@ -60,7 +60,30 @@ cat > /etc/postgresql/18/main/conf.d/01-novabank.conf << 'EOF'
 EOF
 log "Création du fichier de conf postgresql terminée" "s"
 
-# On relance le service postgre
+# Relancement du service postgre
 log "Relancement du service postgresql"
 systemctl restart postgresql
 log "Relancement du service postgresql terminé" "s"
+
+# Configuration de l'ufw (Uncomplicated Firewall)
+log "Configuration de l'ufw (Uncomplicated Firewall)"
+
+# On autorise les connexions de OpenSSH
+log "Configuration de l'ufw: SSH"
+ufw allow OpenSSH
+log "Configuration de l'ufw: SSH, terminée" "s"
+
+# On autorise,
+# des connexions venant de n’importe quelle machine du réseau host-only (.1 à .254),
+# vers le port 5432 de cette VM (any = sur n’importe laquelle de ses adresses),
+# en TCP (le protocole utilisé par PostgreSQL)
+log "Configuration de l'ufw: PostgreSQL"
+ufw allow from 192.168.56.0/24 to any port 5432 proto tcp
+log "Configuration de l'ufw: PostgreSQL, terminée" "s"
+
+# Activation de l'ufw
+log "Activation de l'ufw"
+ufw --force enable
+log "Activation de l'ufw terminée" "s"
+
+log "Configuration de l'ufw terminée" "s"
