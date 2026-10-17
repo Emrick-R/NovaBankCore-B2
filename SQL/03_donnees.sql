@@ -65,3 +65,43 @@ SELECT
 FROM generate_series(1, 200000) AS g
     -- relie chaque compte g à son client : 2 comptes par client (voir la répartition par modulo)
     JOIN core.customers AS c ON c.customer_id = 1 + (g % 100000);
+
+-- Les virements : core.transfers 300k virements entre deux comptes DIFFÉRENTS, tirés au hasard
+-- Verification :
+-- ```SELECT count(*) FROM core.transfers;``` <- doit donner 300 000
+-- ```SELECT min(created_at), max(created_at) FROM core.transfers;``` <- entre il y a 1 an et aujourd'hui
+INSERT INTO core.transfers (
+    from_account_id,-- bigint         NOT NULL REFERENCES core.accounts (account_id),
+    to_account_id,--   bigint         NOT NULL REFERENCES core.accounts (account_id),
+    amount,--          numeric(14, 2) NOT NULL,
+    label,--           text,
+    created_at--      TIMESTAMPTZ    NOT NULL DEFAULT now()
+)
+SELECT
+    -- compte qui envoie : celui tiré dans la sous-requête
+    t.src,
+    -- compte qui reçoit : on part de src et on avance de dec cases,
+    -- en faisant le tour comme une horloge (après 200 000, on revient à 1).
+    -- Comme dec n'est jamais 0 ni un tour complet, on ne retombe jamais sur src.
+    --   -1 : passe de la numérotation 1..200000 à 0..199999 (le modulo commence à 0)
+    --   % 200000 : fait le tour
+    --   1 + : revient à la numérotation 1..200000
+    1 + (t.src - 1 + t.dec) % 200000,
+    -- On génère un nombre avec des centimes
+    random(10.00, 300.00),
+    -- 15 libellés de virement au hasard
+    (ARRAY['Loyer', 'Remboursement', 'Courses', 'Cadeau', 'Restaurant',
+      'Vacances', 'Facture électricité', 'Abonnement', 'Participation',
+      'Anniversaire', 'Colocation', 'Prêt', 'Épargne', 'Frais de transport',
+      'Virement personnel'])[random(1, 15)],
+    -- date du virement : maintenant, moins une fraction d'année au hasard
+    -- (random() donne 0.xxx entre 0 et 1 → entre 0 et 1 an, avec heures et minutes)
+    now() - random() * interval '1 year'
+FROM (
+    -- sous-requête : on fait les tirages UNE SEULE FOIS par virement,
+    -- pour pouvoir réutiliser src deux fois ci-dessus sans le retirer au hasard
+    SELECT g,
+    random(1, 200000) AS src,  -- le compte qui envoie
+    random(1, 199999) AS dec   -- le décalage : de 1 à 199 999, jamais 0
+    FROM generate_series(1, 300000) AS g
+    ) AS t;
