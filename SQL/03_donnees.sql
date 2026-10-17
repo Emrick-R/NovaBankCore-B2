@@ -105,3 +105,82 @@ FROM (
     random(1, 199999) AS dec   -- le décalage : de 1 à 199 999, jamais 0
     FROM generate_series(1, 300000) AS g
     ) AS t;
+
+-- Les transactions :
+-- Toutes les écritures, avant calcul du solde : 1 000 000 de lignes empilées
+
+-- 1. dépôts initiaux : un par compte, à l'ouverture
+CREATE TEMP TABLE ops AS
+SELECT -- le premier SELECT fixe les types : on convertit ici
+    a.account_id,
+    'DEPOSIT'::core.tx_type AS tx_type,
+    random(10000.00, 20000.00) AS amount,
+    NULL::bigint AS transfer_id, -- pas de virement : NULL, typé pour les SELECT suivants
+    a.opened_at AS created_at
+FROM core.accounts AS a
+UNION ALL
+-- 2. retraits : 200 000 sur des comptes au hasard
+SELECT
+    random(1, 200000),
+    'WITHDRAWAL',
+    -random(10.00, 300.00),
+    NULL::bigint,
+    now() - random() * interval '1 year'
+FROM generate_series(1, 200000) AS g
+UNION ALL
+-- 3. sorties de virement : une par virement, sur le compte qui envoie
+SELECT
+    t.from_account_id,
+    'TRANSFER_OUT',
+    -t.amount,
+    t.transfer_id,
+    t.created_at
+FROM core.transfers AS t
+UNION ALL
+-- 4. entrées de virement : une par virement, sur le compte qui reçoit
+SELECT
+    t.to_account_id,
+    'TRANSFER_IN',
+    t.amount,
+    t.transfer_id,
+    t.created_at
+FROM core.transfers AS t;
+
+-- vérification : 4 types, 1 000 000 de lignes, sorties et entrées de virement opposées
+SELECT tx_type, count(*), sum(amount) FROM ops GROUP BY tx_type;
+
+-- 5. insertions des données dans core.transaction
+INSERT INTO core.transactions(
+account_id,--    bigint         NOT NULL REFERENCES core.accounts (account_id),
+tx_type,--       core.tx_type   NOT NULL,
+amount,--        numeric(14, 2) NOT NULL,
+balance_after,-- numeric(14, 2) NOT NULL,
+transfer_id,--   bigint REFERENCES core.transfers (transfer_id),
+created_at--     TIMESTAMPTZ    NOT NULL DEFAULT now(),
+)
+SELECT
+    ops.account_id,
+    ops.tx_type,
+    ops.amount,
+    -- solde cumulé par compte, dans l'ordre des dates ;
+    -- ROWS … CURRENT ROW : s'arrête à cette ligne même si une autre a la même date
+    sum(ops.amount) OVER (PARTITION BY account_id ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW),
+    ops.transfer_id,
+    ops.created_at
+FROM ops
+ORDER BY created_at;
+
+-- 6. mise à jour des accounts.balance
+-- Vérifications:
+-- ```SELECT min(created_at), max(created_at) FROM core.transfers;```
+-- ```SELECT tx_id, tx_type, amount, balance_after, created_at FROM core.transactions WHERE account_id = 50 ORDER BY created_at;```
+
+UPDATE core.accounts AS c
+    SET balance = tx.balance_after
+    FROM (
+    -- pour chaque compte, garde seulement sa première ligne dans l'ordre demandé
+    SELECT DISTINCT ON (account_id) account_id, balance_after
+    FROM core.transactions
+    ORDER BY account_id, created_at, tx_id DESC
+) AS tx
+WHERE c.account_id = tx.account_id;
