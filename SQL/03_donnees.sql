@@ -2,6 +2,9 @@
 -- Lancé avec l'user bank_owner :
 -- psql -h 127.0.0.1 -U bank_owner -d bankdb < ~/SQL/03_donnees.sql
 
+-- arrête le fichier à la première erreur, au lieu d'exécuter la suite sur des données incomplètes
+\set ON_ERROR_STOP on
+
 -- On met à vide toutes les tables remplies par ce fichier, et remet leurs compteurs à 1
 TRUNCATE core.customers, core.accounts, core.transfers, core.transactions, core.fraud_alerts RESTART IDENTITY;
 
@@ -181,6 +184,19 @@ UPDATE core.accounts AS c
     -- pour chaque compte, garde seulement sa première ligne dans l'ordre demandé
     SELECT DISTINCT ON (account_id) account_id, balance_after
     FROM core.transactions
-    ORDER BY account_id, created_at, tx_id DESC
+    ORDER BY account_id, created_at DESC, tx_id DESC
 ) AS tx
 WHERE c.account_id = tx.account_id;
+
+-- contrôle : doit renvoyer 0 ligne si chaque solde est cohérent avec ses écritures
+SELECT a.account_id, a.balance, s.total
+FROM core.accounts AS a
+         JOIN (
+    SELECT account_id, sum(amount) AS total
+    FROM core.transactions
+    GROUP BY account_id
+) AS s ON s.account_id = a.account_id
+WHERE a.balance <> s.total;
+
+-- statistiques des tables du projet (les tables système ne nous concernent pas)
+ANALYZE core.customers, core.accounts, core.transfers, core.transactions;
