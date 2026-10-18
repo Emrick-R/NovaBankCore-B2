@@ -5,8 +5,17 @@
 -- arrête le fichier à la première erreur, au lieu d'exécuter la suite sur des données incomplètes
 \set ON_ERROR_STOP on
 
+BEGIN;
+-- désactive les triggers créés par nous (USER) le temps du chargement :
+-- le grand livre immuable bloquerait le TRUNCATE, et l'audit noterait 100 000 clients
+ALTER TABLE core.customers DISABLE TRIGGER USER;
+ALTER TABLE core.accounts DISABLE TRIGGER USER;
+ALTER TABLE core.transfers DISABLE TRIGGER USER;
+ALTER TABLE core.transactions DISABLE TRIGGER USER;
+ALTER TABLE core.fraud_alerts DISABLE TRIGGER USER;
+
 -- On met à vide toutes les tables remplies par ce fichier, et remet leurs compteurs à 1
-TRUNCATE core.customers, core.accounts, core.transfers, core.transactions, core.fraud_alerts RESTART IDENTITY;
+TRUNCATE core.customers, core.accounts, core.transfers, core.transactions, core.fraud_alerts, audit.audit_log RESTART IDENTITY;
 
 -- On utilise une seed pour avoir la même chose à chaque lancement du fichier
 SELECT setseed(0.3);
@@ -197,6 +206,15 @@ FROM core.accounts AS a
     GROUP BY account_id
 ) AS s ON s.account_id = a.account_id
 WHERE a.balance <> s.total;
+
+-- réactive les triggers : le grand livre redevient immuable, l'audit reprend
+ALTER TABLE core.customers ENABLE  TRIGGER USER;
+ALTER TABLE core.accounts ENABLE  TRIGGER USER;
+ALTER TABLE core.transfers ENABLE  TRIGGER USER;
+ALTER TABLE core.transactions ENABLE  TRIGGER USER;
+ALTER TABLE core.fraud_alerts ENABLE  TRIGGER USER;
+
+COMMIT;
 
 -- statistiques des tables du projet (les tables système ne nous concernent pas)
 ANALYZE core.customers, core.accounts, core.transfers, core.transactions;
