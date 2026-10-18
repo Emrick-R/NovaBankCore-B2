@@ -3,6 +3,9 @@
 -- psql -h 127.0.0.1 -U bank_owner -d bankdb < ~/SQL/02_tables.sql
 -- Verification : ```\dT core.*``` ```\dt audit.*```
 
+-- arrête le fichier à la première erreur, au lieu d'exécuter la suite sur des données incomplètes
+\set ON_ERROR_STOP on
+
 -- Création des tables
 -- Table customers
 CREATE TABLE core.customers
