@@ -1,4 +1,6 @@
 -- 1er fichier de création de la db
+-- Envoiyer les fichier du dossier /SQL :
+-- scp -r SQL  novab-db:~/
 -- À lancer en tant que postgres, on crée la db, le rôle de l'owner et la base
 -- sudo -u postgres psql -d bankdb < ~/SQL/04_postgre_role.sql
 
