@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # fichier d'installation et de configuration de postgresql, de ufw
-# Usage : sudo ./script.sh
+# Envoyer les fichier du dossier /scripts :
+# scp -r scripts  novab-db:~/
+# Usage : sudo ./scripts/installation.sh
 set -euo pipefail
 
 NORMAL="\033[0m"
@@ -48,7 +50,7 @@ log "Installations terminées" "s"
 # Création du fichier de conf de postgresql
 log "Création du fichier de conf postgresql"
 cat > /etc/postgresql/18/main/conf.d/01-novabank.conf << 'EOF'
-  # Fichier de configuration POSTGRESQL généré via script.sh
+  # Fichier de configuration POSTGRESQL généré via installation.sh
   # on definit les adresses d'écoute (localhost et private host)
   listen_addresses = '127.0.0.1, 192.168.56.10'
   # On impose scram-sha-256 pour chiffrer les mots de passe
@@ -100,7 +102,7 @@ log "Copie du fichier original terminé" "s"
 # Création du fichier de config
 log "Création du fichier de configuration"
 cat > /etc/postgresql/18/main/pg_hba.conf << 'EOF'
-  # Fichier de configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi. Générer via script.sh
+  # Fichier de configuration des droit de connexion selon l'utilisateur, son adresse et vers quoi. Générer via installation.sh
   local	all	postgres		peer
   host	bankdb	bank_owner,+grp_appli	127.0.0.1/32	scram-sha-256
   host	bankdb	+grp_analyste,+grp_support,+grp_auditeur	192.168.56.0/24	scram-sha-256
