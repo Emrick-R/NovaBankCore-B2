@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fichier d'installation et de configuration de postgresql, de ufw
-# Envoyer les fichier du dossier /scripts :
+# Envoyer les fichiers du dossier /scripts :
 # scp -r scripts  novab-db:~/
 # Usage : sudo ./scripts/installation.sh
 set -euo pipefail
