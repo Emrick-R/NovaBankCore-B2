@@ -35,31 +35,34 @@ Depuis le PC, à la racine du dépôt, envoyer les dossiers dans la VM :
 scp -r SQL scripts novab-db:~/
 ```
 
-Puis, dans la VM :
+Puis, dans la VM, un seul script enchaîne tout :
 
 ```bash
-# 1. installer et configurer PostgreSQL 18, le pare-feu et pg_hba.conf
 chmod 755 ~/scripts/*.sh
-sudo ~/scripts/installation.sh
-
-# 2. créer la base, les rôles, les tables, les données, les droits, les vues,
-#    les index, les triggers et les procédures (demande OUI, puis les 5 mots de passe)
 sudo ~/scripts/tout_refaire.sh
-
-# 3. lancer les tests : 57 OK attendus, 0 KO
-sudo -u postgres psql -d bankdb < ~/SQL/tests/tests.sql > ~/resultats_tests.txt 2>&1
-grep -c 'RESULTAT: OK' ~/resultats_tests.txt
-grep -c 'RESULTAT: KO' ~/resultats_tests.txt
-
-# 4. sauvegarder la base et vérifier la sauvegarde
-sudo ~/scripts/sauvegarde.sh
 ```
 
-`tout_refaire.sh` peut être relancé à tout moment : il supprime la base et les rôles du projet,
-puis reconstruit tout de zéro (environ 1 à 2 minutes, à cause du million d'écritures).
+`tout_refaire.sh` pose une question avant chaque étape (`oui`/`non`, ou `o`/`n` ; toute autre réponse
+est redemandée). Répondre `non` saute l'étape et passe à la suivante.
+
+| Étape | Script lancé | Ce qu'elle fait |
+| --- | --- | --- |
+| 1. Serveur | `installation.sh` | Installe et configure PostgreSQL 18, le pare-feu et `pg_hba.conf` |
+| 2. Base | `recreation_db.sh` | Supprime puis recrée la base, les rôles, les tables, les données, les droits, les vues, les index, les triggers et les procédures (redemande `OUI`, puis les 5 mots de passe) |
+| 3. Vérification | `SQL/tests/tests.sql` | Lance les 57 tests, affiche le nombre de réussites et d'échecs ; **s'arrête** s'il y a un échec, avant la sauvegarde |
+| 4. Sauvegarde | `sauvegarde.sh` | Sauvegarde la base, la restaure dans une base temporaire et compare les comptages |
+
+Le détail des tests est écrit dans `SQL/tests/resultats_tests.txt`.
+
+Sur une VM neuve, il faut répondre `oui` aux quatre étapes. Ensuite, chaque étape peut être relancée
+seule : par exemple, répondre `non`, `non`, `oui`, `non` relance uniquement les tests. Chaque script
+peut aussi être lancé directement (`sudo ~/scripts/recreation_db.sh`). 
+Attention, il n'y aura pas de demande de confirmation avant lancement des scripts de manière individuel. 
+
+La reconstruction de la base prend environ 1 à 2 minutes, à cause du million d'écritures.
 
 **Aucun mot de passe n'est stocké dans le dépôt** : ils sont saisis à la main avec `\password`
-pendant `tout_refaire.sh`.
+pendant `recreation_db.sh`.
 
 ---
 
@@ -68,9 +71,10 @@ pendant `tout_refaire.sh`.
 ```
 captures/                 captures d'écran, par étape
 scripts/
+    tout_refaire.sh       enchaîne les 3 scripts et les tests, une question par étape (E8)
     installation.sh       installe et configure le serveur (E1)
+    recreation_db.sh      supprime et reconstruit la base de zéro (E8)
     sauvegarde.sh         sauvegarde la base et vérifie la sauvegarde (E8)
-    tout_refaire.sh       supprime et reconstruit la base de zéro (E8)
 SQL/
     00_role_base.sql      rôle bank_owner, base bankdb                  (postgres)
     01_schemas_types.sql  schémas core et audit, types ENUM             (bank_owner)
@@ -84,12 +88,13 @@ SQL/
     09_procedures.sql     ouverture de compte, virement, relevé         (bank_owner)
     outils/compare.sql    comptage des lignes, utilisé par sauvegarde.sh
     tests/tests.sql       57 tests : un cas qui passe, un cas refusé par règle
+    tests/resultats_tests.txt  résultat du dernier lancement (créé par tout_refaire.sh)
 .gitignore                .idea, .env, fichiers .dump…
 .gitattributes            fins de ligne LF pour les .sh et les .sql
 README.md
 ```
 
-Les fichiers SQL sont **numérotés dans l'ordre d'exécution** : `tout_refaire.sh` les rejoue dans
+Les fichiers SQL sont **numérotés dans l'ordre d'exécution** : `recreation_db.sh` les rejoue dans
 cet ordre, chacun avec le bon utilisateur (`postgres` pour `00` et `04`, `bank_owner` pour les autres,
 via `SET ROLE bank_owner`). Chaque fichier contient en commentaire ses commandes de vérification.
 
@@ -265,7 +270,8 @@ Trois portes : `CONNECT` sur la base, `USAGE` sur le schéma, droit sur l'objet.
 ### E8 · Tests, sauvegarde, reconstruction
 - **Tests** (`SQL/tests/tests.sql`) : 57 tests, chacun dans un `BEGIN … ROLLBACK` (rien n'est conservé), résultat lu avec `:ERROR`. Contrôle de contenu par division par zéro (`1 / count(*)`). Chaque refus est vérifié par son message (la bonne contrainte).
 - **Sauvegarde** (`scripts/sauvegarde.sh`) : `pg_dump -Fc` daté dans `/var/backups/postgresql/` (droits `700`), restauration dans une base temporaire, comparaison des comptages avec `compare.sql`, puis suppression de la base temporaire. Les rôles ne sont pas inclus dans `pg_dump` : ils sont recréés par `04_postgre_role.sql`.
-- **Reconstruction** (`scripts/tout_refaire.sh`) : confirmation `OUI`, suppression de la base (`--force`) puis des 9 rôles listés explicitement, rejeu des fichiers numérotés, puis saisie des mots de passe (redemandée tant que les deux saisies diffèrent).
+- **Reconstruction** (`scripts/recreation_db.sh`) : suppression de la base (`--force`) puis des 9 rôles listés explicitement, rejeu des fichiers numérotés, puis saisie des mots de passe (redemandée tant que les deux saisies diffèrent).
+- **Tout refaire** (`scripts/tout_refaire.sh`) : enchaîne serveur, base, tests et sauvegarde. Une fonction `demander` pose une question par étape et renvoie le code `0` seulement pour `oui` : le `if` lance alors l'étape, sinon elle est sautée. `set -euo pipefail` arrête tout si un script échoue, et le script s'arrête aussi si un test est `KO`, pour ne jamais sauvegarder une base incohérente. Les autres scripts sont retrouvés avec `dirname "$(realpath "$0")"`, donc le script fonctionne quel que soit le dossier d'où on le lance.
 
 ---
 

@@ -2,9 +2,9 @@
 -- Lancé avec postgres : sudo -u postgres psql -d bankdb < ~/SQL/tests/tests.sql
 -- Les tests qui modifient la base sont dans un BEGIN … ROLLBACK : rien n'est conservé
 -- Vérifications :
-sudo -u postgres psql -d bankdb < ~/SQL/tests/tests.sql > ~/resultats_tests.txt 2>&1
-grep -c 'RESULTAT: OK' ~/resultats_tests.txt
-grep -c 'RESULTAT: KO' ~/resultats_tests.txt
+-- sudo -u postgres psql -d bankdb < ~/SQL/tests/tests.sql > ~/resultats_tests.txt 2>&1
+-- grep -c 'RESULTAT: OK' ~/resultats_tests.txt
+-- grep -c 'RESULTAT: KO' ~/resultats_tests.txt
 -- grep 'ERROR' ~/resultats_tests.txt
 
 -- Nb Test : 57

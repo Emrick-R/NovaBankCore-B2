@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fichier de mise en place de la base de donnée dans un serveur postgresql prêt et configuré (voir installation.sh)
+# fichier qui enchaîne serveur, base, tests et sauvegarde.
 # Usage : sudo ./scripts/tout_refaire.sh
 set -euo pipefail
 
@@ -8,6 +8,7 @@ CYAN="\033[1;36m"
 JAUNE="\033[1;33m"
 ROUGE="\033[1;31m"
 VERT="\033[1;32m"
+MAGENTA="\033[1;35m"
 
 DOSSIER_SCRIPT="$(dirname "$(realpath "$0")")"
 DOSSIER_SQL="$DOSSIER_SCRIPT/../SQL"
@@ -24,6 +25,9 @@ log() {
   # Erreur
   elif [[ ${2:-} == "e" ]]; then
     echo -e "\n${ROUGE}=====error> $1 ${NORMAL}\n" >&2
+  # Demande
+  elif [[ ${2:-} == "d" ]]; then
+    echo -e "\n${MAGENTA}===demande> $1 ${NORMAL}\n" >&2
   # Information
   else
     echo -e "\n${CYAN}==========> $1 ${NORMAL}\n"
@@ -37,55 +41,59 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# Avant d'effectuer quoi que ce soit, on demande à l'user s'il veux bien suppr la base et ses rôles
-log "Demande de suppression"
-# -p affiche la question, la réponse tapée est rangée dans la variable REPONSE
-# -r empêche Bash d’interpréter les \ dans la réponse
-read -r -p "Cette opération supprime TOUTE la base bankdb. Tapez OUI pour continuer : " REPONSE
+# Demande d'instalation:
+# demander : pose une question, réussit (code 0) seulement si on répond oui
+demander() {
+    # -p affiche la question, la réponse tapée est rangée dans la variable REPONSE
+    # -r empêche Bash d’interpréter les \ dans la réponse
+    REPONSE=""
+    until [[ "$REPONSE" == "oui" || "$REPONSE" == "non" || "$REPONSE" == "o" || "$REPONSE" == "n" ]]; do
+      read -r -p "$1 (oui/non) : " REPONSE
+      if [[ "$REPONSE" != "oui" && "$REPONSE" != "non" && "$REPONSE" != "o" && "$REPONSE" != "n" ]]; then
+        log "Veuillez répondre par \"oui\", \"o\", \"non\" ou \"n\" ($REPONSE)" "a"
+      fi
+    done
+    if [[ "$REPONSE" == "oui" || "$REPONSE" == "o" ]]; then
+      return 0
+    fi
+    return 1
+}
 
-# On vérifie i la réponse est bonne, si non on annule tout
-if [[ "$REPONSE" != "OUI" ]]; then
-  log "Opération annulée, rien n’a été modifié" "a"
-  exit 0
+log "Demande d'installation du serveur postgresql" "d"
+if demander "Installer le serveur ?"; then
+    sudo "${DOSSIER_SCRIPT}"/installation.sh
+else
+    log "Opération passé, rien n’a été modifié" "a"
 fi
 
-log "Début des suppression"
-# Suppression de la db
-log "Suppression de la db"
-sudo -u postgres dropdb --if-exists --force bankdb
-log "Suppression de la db terminé" "s"
+log "Demande de création de la base de donnée (DB)" "d"
+if demander "Créer la base de donnée \"bankdb\" ?. Cette opération supprime TOUTE la base bankdb si déjà existante."; then
+    sudo "${DOSSIER_SCRIPT}"/recreation_db.sh
+else
+    log "Opération passé, rien n’a été modifié" "a"
+fi
 
-# Suppression des rôles
-log "Suppression des rôles"
-sudo -u postgres psql -c "DROP ROLE IF EXISTS grp_analyste, grp_support, grp_appli, grp_auditeur, analyste_alice, support_bob, app_novabank, auditeur_chloe, bank_owner"
-log "Suppression des rôles terminée" "s"
+log "Demande de vérification de la DB" "d"
+if demander "Faire une vérification de bonne installation de bankdb ?"; then
+    sudo -u postgres psql -d bankdb < "${DOSSIER_SQL}"/tests/tests.sql > "${DOSSIER_SQL}"/tests/resultats_tests.txt 2>&1
+    OK=$(grep -c 'RESULTAT: OK' "${DOSSIER_SQL}"/tests//resultats_tests.txt)
+    log "Nombre de vérifications réussies :" "s"
+    echo "${OK}"
+    log "Nombre de vérifications échouées :" "e"
+    if grep -q 'RESULTAT: KO' "${DOSSIER_SQL}"/tests//resultats_tests.txt; then
+      exit 1
+    else
+      echo "0"
+    fi
+else
+    log "Opération passé, rien n’a été modifié" "a"
+fi
 
-log "Reconstruction de bankdb"
-# tous les fichiers SQL numérotés, dans l'ordre alphabétique : 00_, 01_, … 09_
-log "Exécution des fichiers SQL"
-for FICHIER in "$DOSSIER_SQL"/[0-9][0-9]_*.sql; do
-  log "Exécution de $(basename "$FICHIER")"
-  if [[ "$FICHIER" == "$DOSSIER_SQL"/00_*.sql || "$FICHIER" == "$DOSSIER_SQL"/04_*.sql ]]; then
-    sudo -u postgres psql < "$FICHIER"
-  else
-    # on exécute le fichier en tant que bank_owner, sans mot de passe :
-    # postgres se connecte (règle peer), puis SET ROLE fait agir la session en tant que bank_owner
-    { echo "SET ROLE bank_owner;"; cat "$FICHIER"; } | sudo -u postgres psql -d bankdb
-  fi
-  log "Exécution de $(basename "$FICHIER") terminée" "s"
-done
-log "Exécution des fichiers SQL terminée" "s"
+log "Demande de sauvegarde de la DB" "d"
+if demander "Faire une sauvegarde de \"bankdb\" ?"; then
+     sudo "${DOSSIER_SCRIPT}"/sauvegarde.sh
+else
+    log "Opération passé, rien n’a été modifié" "a"
+fi
 
-log "Definition des mots de passe des comptes"
-# L'user définit maintenant les mot de passe de chaque compte
-for COMPTE in bank_owner analyste_alice support_bob app_novabank auditeur_chloe; do
-    log "Mot de passe de $COMPTE"
-    # redemande le mot de passe tant que les deux saisies ne correspondent pas
-    until sudo -u postgres psql -c "\password $COMPTE"; do
-        log "Les deux saisies ne correspondent pas, recommencez" "a"
-    done
-    log "Mot de passe de $COMPTE défini" "s"
-done
-log "Definition des mots de passe des comptes terminée" "s"
-
-log "Reconstruction de bankdb terminée" "s"
+log "Fin des opérations" "s"
