@@ -333,8 +333,8 @@ Le projet a été réalisé avec l'aide de **Claude** (Anthropic), utilisé comm
 - **Relecture** : chaque fichier a été écrit par moi, puis relu par l'IA, qui signalait les erreurs ; je les ai corrigées.
 - **Code fourni par l'IA**, puis compris, adapté et testé :
     - la fonction `core.fn_solde` (trigger du solde) ;
-    - des squelettes à trous : procédures d'ouverture, de virement et de relevé, trigger de fraude ;
+    - des squelettes à trous : procédures d'ouverture, trigger de fraude ;
     - certaines requêtes : matrice `has_table_privilege`, sous-requête de tirage des virements, astuce de la division par zéro dans les tests ;
-    - la rédaction de ce README, à partir de mon journal de bord, relu et complété par moi.
+    - la rédaction de ce README, relu et complété par moi.
 
 Je suis en mesure d'expliquer chaque ligne du projet.
